@@ -7,11 +7,18 @@ import numpy as np
 import pytesseract
 import pyautogui
 import time
+import os
 
 class WebAgent:
     def __init__(self):
-        # 初始化 Chrome 浏览器
-        self.driver = webdriver.Chrome()
+        # 初始化 Chrome 浏览器选项
+        options = webdriver.ChromeOptions()
+        options.add_argument('--log-level=3')  # 只显示致命错误
+        options.add_argument('--silent')
+        options.add_experimental_option('excludeSwitches', ['enable-logging'])
+        
+        # 初始化浏览器
+        self.driver = webdriver.Chrome(options=options)
         # 设置 pytesseract 路径（需要先安装 Tesseract-OCR）
         pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
         
@@ -28,7 +35,17 @@ class WebAgent:
         """在页面中查找指定文本"""
         try:
             element = WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_containing_text(text)
+                EC.presence_of_element_located((By.XPATH, f"//*[contains(text(), '{text}')]"))
+            )
+            return element
+        except:
+            return None
+            
+    def find_element_by_xpath(self, xpath):
+        """使用XPath查找元素"""
+        try:
+            element = WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.XPATH, xpath))
             )
             return element
         except:
@@ -82,7 +99,21 @@ class WebAgent:
     def close(self):
         """关闭浏览器"""
         self.driver.quit()
-
+    
+    def save_screenshot(self, filename):
+        """保存页面截图"""
+        try:
+            # 确保使用绝对路径
+            if not os.path.isabs(filename):
+                filename = os.path.join(os.path.dirname(os.path.abspath(__file__)), filename)
+            
+            # 保存截图
+            self.driver.save_screenshot(filename)
+            return True
+        except Exception as e:
+            print(f"截图失败: {str(e)}")
+            return False
+            
 # 使用示例
 if __name__ == "__main__":
     agent = WebAgent()
