@@ -1,20 +1,32 @@
 # Python
+
 __pycache__/
 *.py[cod]
-*$py.class
 *.so
-.Python
-env/
-build/
-dist/
+*.egg
 *.egg-info/
+dist/
+build/
+eggs/
+parts/
+bin/
+var/
+sdist/
+develop-eggs/
+.installed.cfg
+lib/
+lib64/
+venv/
+env/
 
-# 项目特定
-logs/
+# 项目特定文件
 *.log
-debug_screenshot.png
-qrcode_not_found.png
+*.xlsx
+debug_*.png
+.env
 
 # IDE
 .idea/
 .vscode/
+*.swp
+*.swo

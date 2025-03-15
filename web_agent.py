@@ -41,6 +41,17 @@ class WebAgent:
         except:
             return None
             
+    def find_elements_by_xpath(self, xpath):
+        """使用XPath查找多个元素"""
+        try:
+            elements = WebDriverWait(self.driver, 10).until(
+                EC.presence_of_all_elements_located((By.XPATH, xpath))
+            )
+            return elements
+        except Exception as e:
+            print(f"查找元素失败: {str(e)}")
+            return []
+            
     def find_element_by_xpath(self, xpath):
         """使用XPath查找元素"""
         try:
