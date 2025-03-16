@@ -572,39 +572,128 @@ def main():
                                                                 agent.driver.switch_to.window(current_window)
                                                                 logger.info("已切回订单详情页面，准备点击确认收款按钮...")
                                                                 
-                                                                # 使用简单直接的方式查找确认收款按钮
+                                                                # 等待页面加载
+                                                                time.sleep(2)
+                                                                
+                                                                # 直接通过span文本内容查找按钮
                                                                 try:
-                                                                    # 等待页面加载
-                                                                    time.sleep(2)
-                                                                    
-                                                                    # 直接通过span文本内容查找按钮
                                                                     confirm_button = agent.driver.find_element("xpath", "//span[text()='确认收款']/parent::button")
                                                                     logger.info("找到确认收款按钮")
                                                                     
                                                                     # 点击按钮
+                                                                    # 点击按钮
                                                                     agent.click_element(confirm_button)
                                                                     logger.info("已点击确认收款按钮")
-                                                                    time.sleep(3)  # 等待确认操作完成
+                                                                    
+                                                                    # 等待弹窗出现
+                                                                    logger.info("等待确认弹窗出现...")
+                                                                    time.sleep(3)
+                                                                    
+                                                                    # 处理弹窗中的选择
+                                                                    try:
+                                                                        # 查找并选择"是"选项
+                                                                        radio_selectors = [
+                                                                            "//input[@type='radio' and (@value='是' or @value='yes' or following-sibling::span[text()='是'])]",
+                                                                            "//span[text()='是']/preceding-sibling::input[@type='radio']",
+                                                                            "//div[contains(@class, 'radio')]//span[text()='是']",
+                                                                            "//label[contains(@class, 'radio')]//span[text()='是']"
+                                                                        ]
+                                                                        
+                                                                        radio_selected = False
+                                                                        for selector in radio_selectors:
+                                                                            try:
+                                                                                radio_element = agent.driver.find_element("xpath", selector)
+                                                                                if radio_element and radio_element.is_displayed():
+                                                                                    agent.click_element(radio_element)
+                                                                                    logger.info("已选择'是'选项")
+                                                                                    radio_selected = True
+                                                                                    break
+                                                                            except:
+                                                                                continue
+                                                                        
+                                                                        if not radio_selected:
+                                                                            logger.warning("未找到'是'选项，尝试查找包含'是'的元素")
+                                                                            # 尝试查找包含"是"的任何可点击元素
+                                                                            yes_elements = agent.driver.find_elements("xpath", "//*[contains(text(), '是')]")
+                                                                            for element in yes_elements:
+                                                                                if element.is_displayed():
+                                                                                    agent.click_element(element)
+                                                                                    logger.info("已点击包含'是'的元素")
+                                                                                    radio_selected = True
+                                                                                    break
+                                                                        
+                                                                        # 等待选择生效
+                                                                        time.sleep(1)
+                                                                        
+                                                                        # 查找并点击"确认放币"按钮
+                                                                        confirm_release_selectors = [
+                                                                            "//button//span[contains(text(), '确认放币')]",
+                                                                            "//span[contains(text(), '确认放币')]/parent::button",
+                                                                            "//button[contains(text(), '确认放币')]",
+                                                                            "//div[contains(@class, 'button') and contains(text(), '确认放币')]"
+                                                                        ]
+                                                                        
+                                                                        release_button_clicked = False
+                                                                        for selector in confirm_release_selectors:
+                                                                            try:
+                                                                                release_button = agent.driver.find_element("xpath", selector)
+                                                                                if release_button and release_button.is_displayed():
+                                                                                    agent.click_element(release_button)
+                                                                                    logger.info("已点击'确认放币'按钮")
+                                                                                    release_button_clicked = True
+                                                                                    break
+                                                                            except:
+                                                                                continue
+                                                                        
+                                                                        if not release_button_clicked:
+                                                                            logger.warning("未找到'确认放币'按钮")
+                                                                        
+                                                                        # 等待交易完成
+                                                                        logger.info("等待交易完成...")
+                                                                        time.sleep(5)
+                                                                        
+                                                                        # 检查是否有成功提示
+                                                                        success_indicators = [
+                                                                            "//div[contains(text(), '成功') or contains(text(), '完成')]",
+                                                                            "//span[contains(text(), '成功') or contains(text(), '完成')]",
+                                                                            "//div[contains(@class, 'success')]"
+                                                                        ]
+                                                                        
+                                                                        success_found = False
+                                                                        for selector in success_indicators:
+                                                                            try:
+                                                                                success_element = agent.driver.find_element("xpath", selector)
+                                                                                if success_element and success_element.is_displayed():
+                                                                                    logger.info(f"检测到成功提示: {success_element.text}")
+                                                                                    success_found = True
+                                                                                    break
+                                                                            except:
+                                                                                continue
+                                                                        
+                                                                        if success_found:
+                                                                            order['确认放币'] = "已确认"
+                                                                            logger.info("交易已成功完成")
+                                                                        else:
+                                                                            order['确认放币'] = "未知"
+                                                                            logger.warning("未检测到明确的成功提示，交易状态未知")
+                                                                        
+                                                                    except Exception as e:
+                                                                        logger.error(f"处理确认弹窗时出错: {str(e)}")
+                                                                        order['确认放币'] = "失败"
+                                                                    
+                                                                    # 等待一段时间，确保所有操作完成
+                                                                    time.sleep(5)
                                                                     order['确认收款'] = "已确认"
                                                                 except Exception as e:
                                                                     logger.warning(f"点击确认收款按钮失败: {str(e)}")
-                                                                    # 备用方法：通过class查找
-                                                                    try:
-                                                                        confirm_button = agent.driver.find_element("css selector", "button.okui-btn.btn-fill-highlight span.btn-content")
-                                                                        agent.click_element(confirm_button)
-                                                                        logger.info("已通过备用方法点击确认收款按钮")
-                                                                        time.sleep(3)
-                                                                        order['确认收款'] = "已确认"
-                                                                    except Exception as e2:
-                                                                        logger.error(f"备用方法点击确认收款按钮也失败: {str(e2)}")
-                                                                        order['确认收款'] = "未确认"
+                                                                    order['确认收款'] = "未确认"
                                                             else:
                                                                 order['支付宝确认'] = "未确认"
                                                                 logger.warning(f"监控结束，未在支付宝找到匹配的付款记录，监控时长 {search_duration:.1f} 秒")
-                                                            
-                                                            # 切回订单详情页面继续处理
-                                                            agent.driver.switch_to.window(current_window)
-                                                            logger.info("已切回订单详情页面")
+                                                                
+                                                                # 切回订单详情页面
+                                                                agent.driver.switch_to.window(current_window)
+                                                                logger.info("已切回订单详情页面")
                                                         else:
                                                             logger.error("未能打开支付宝交易记录窗口")
                                                     except Exception as e:
