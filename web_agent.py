@@ -8,59 +8,60 @@ import pytesseract
 import pyautogui
 import time
 import os
+import logging
 
 class WebAgent:
-    def __init__(self):
-        # 初始化 Chrome 浏览器选项
-        options = webdriver.ChromeOptions()
-        options.add_argument('--log-level=3')  # 只显示致命错误
-        options.add_argument('--silent')
-        options.add_experimental_option('excludeSwitches', ['enable-logging'])
+    def __init__(self, ignore_errors=None):
+        # 设置日志记录器
+        self.logger = logging.getLogger('WebAgent')
+        if not self.logger.handlers:
+            handler = logging.StreamHandler()
+            formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            handler.setFormatter(formatter)
+            self.logger.addHandler(handler)
+            self.logger.setLevel(logging.INFO)
         
-        # 初始化浏览器
-        self.driver = webdriver.Chrome(options=options)
-        # 设置 pytesseract 路径（需要先安装 Tesseract-OCR）
-        pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+        # 存储要忽略的错误
+        self.ignore_errors = ignore_errors or []
         
-    def load_page(self, url):
-        """加载指定URL的网页"""
         try:
-            self.driver.get(url)
-            return True
+            # 配置Chrome选项
+            options = webdriver.ChromeOptions()
+            
+            # 忽略特定错误
+            if self.ignore_errors:
+                for error in self.ignore_errors:
+                    options.add_argument(f"--disable-features={error}")
+            
+            self.driver = webdriver.Chrome(options=options)
+            self.driver.maximize_window()
         except Exception as e:
-            print(f"加载页面失败: {str(e)}")
-            return False
-            
-    def find_text(self, text):
-        """在页面中查找指定文本"""
-        try:
-            element = WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located((By.XPATH, f"//*[contains(text(), '{text}')]"))
-            )
-            return element
-        except:
-            return None
-            
-    def find_elements_by_xpath(self, xpath):
-        """使用XPath查找多个元素"""
-        try:
-            elements = WebDriverWait(self.driver, 10).until(
-                EC.presence_of_all_elements_located((By.XPATH, xpath))
-            )
-            return elements
-        except Exception as e:
-            print(f"查找元素失败: {str(e)}")
-            return []
-            
-    def find_element_by_xpath(self, xpath):
-        """使用XPath查找元素"""
-        try:
-            element = WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located((By.XPATH, xpath))
-            )
-            return element
-        except:
-            return None
+            self.logger.error(f"初始化WebDriver失败: {str(e)}")
+            raise
+
+    def find_element_by_xpath(self, xpath, max_retries=3, retry_delay=1):
+        for attempt in range(max_retries):
+            try:
+                element = self.driver.find_element("xpath", xpath)
+                return element
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay)
+                    continue
+                raise e
+    
+    def load_page(self, url, max_retries=3, retry_delay=2):
+        for attempt in range(max_retries):
+            try:
+                self.driver.get(url)
+                return True
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay)
+                    continue
+                else:
+                    raise e
+        return False  # 如果所有重试都失败
             
     def click_element(self, element):
         """点击指定元素"""
