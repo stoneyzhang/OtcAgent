@@ -567,6 +567,37 @@ def main():
                                                             if found_payment:
                                                                 order['支付宝确认'] = "已确认"
                                                                 logger.info(f"已在支付宝确认付款记录，用时 {search_duration:.1f} 秒")
+                                                                
+                                                                # 切回订单详情页面并点击确认收款按钮
+                                                                agent.driver.switch_to.window(current_window)
+                                                                logger.info("已切回订单详情页面，准备点击确认收款按钮...")
+                                                                
+                                                                # 使用简单直接的方式查找确认收款按钮
+                                                                try:
+                                                                    # 等待页面加载
+                                                                    time.sleep(2)
+                                                                    
+                                                                    # 直接通过span文本内容查找按钮
+                                                                    confirm_button = agent.driver.find_element("xpath", "//span[text()='确认收款']/parent::button")
+                                                                    logger.info("找到确认收款按钮")
+                                                                    
+                                                                    # 点击按钮
+                                                                    agent.click_element(confirm_button)
+                                                                    logger.info("已点击确认收款按钮")
+                                                                    time.sleep(3)  # 等待确认操作完成
+                                                                    order['确认收款'] = "已确认"
+                                                                except Exception as e:
+                                                                    logger.warning(f"点击确认收款按钮失败: {str(e)}")
+                                                                    # 备用方法：通过class查找
+                                                                    try:
+                                                                        confirm_button = agent.driver.find_element("css selector", "button.okui-btn.btn-fill-highlight span.btn-content")
+                                                                        agent.click_element(confirm_button)
+                                                                        logger.info("已通过备用方法点击确认收款按钮")
+                                                                        time.sleep(3)
+                                                                        order['确认收款'] = "已确认"
+                                                                    except Exception as e2:
+                                                                        logger.error(f"备用方法点击确认收款按钮也失败: {str(e2)}")
+                                                                        order['确认收款'] = "未确认"
                                                             else:
                                                                 order['支付宝确认'] = "未确认"
                                                                 logger.warning(f"监控结束，未在支付宝找到匹配的付款记录，监控时长 {search_duration:.1f} 秒")
