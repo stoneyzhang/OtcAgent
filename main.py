@@ -181,24 +181,47 @@ def main():
                                     order_url = f"https://www.okx.com/zh-hans/p2p/order?orderId={order['订单号']}"
                                     main_window = agent.driver.current_window_handle
                                     
-                                    # 使用更可靠的方式打开新页面 - 只使用JavaScript方法
+                                    # 使用更可靠的方式打开新页面
                                     try:
+                                        # 记录当前窗口数量
+                                        original_windows = agent.driver.window_handles
+                                        
                                         # 直接使用JavaScript打开新窗口
                                         agent.driver.execute_script(f"window.open('{order_url}', '_blank');")
-                                        time.sleep(2)  # 等待新窗口打开
+                                        time.sleep(3)  # 增加等待时间，确保新窗口有足够时间打开
                                         
-                                        # 切换到新窗口
-                                        windows = agent.driver.window_handles
-                                        new_window = [handle for handle in windows if handle != main_window]
-                                        if new_window:
-                                            agent.driver.switch_to.window(new_window[0])
-                                            time.sleep(3)  # 等待页面加载
+                                        # 检查是否有新窗口打开
+                                        current_windows = agent.driver.window_handles
+                                        if len(current_windows) > len(original_windows):
+                                            # 找到新窗口
+                                            new_window = [handle for handle in current_windows if handle not in original_windows][0]
+                                            agent.driver.switch_to.window(new_window)
+                                            time.sleep(5)  # 增加等待时间，确保页面完全加载
+                                            
+                                            # 验证是否成功加载了订单详情页面
+                                            if "p2p/order" in agent.driver.current_url and order['订单号'] in agent.driver.current_url:
+                                                logger.info(f"成功打开订单 {order['订单号']} 详情页面")
+                                            else:
+                                                logger.warning(f"页面已打开但URL不匹配: {agent.driver.current_url}")
+                                                # 尝试直接导航到正确的URL
+                                                agent.load_page(order_url)
+                                                time.sleep(3)
                                         else:
-                                            logger.error("无法找到新打开的窗口")
-                                            continue
+                                            logger.error("未能打开新窗口")
+                                            # 尝试在当前窗口打开订单详情
+                                            logger.info("尝试在当前窗口打开订单详情...")
+                                            agent.load_page(order_url)
+                                            time.sleep(3)
                                     except Exception as e:
-                                        logger.error(f"打开新窗口失败: {str(e)}")
-                                        continue
+                                        logger.error(f"打开订单详情页面失败: {str(e)}")
+                                        # 尝试在当前窗口打开
+                                        try:
+                                            logger.info("尝试在当前窗口打开订单详情...")
+                                            agent.load_page(order_url)
+                                            time.sleep(3)
+                                        except Exception as e2:
+                                            logger.error(f"在当前窗口打开也失败: {str(e2)}")
+                                            continue
                                     
                                     # 获取订单详情信息
                                     try:
