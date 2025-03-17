@@ -6,6 +6,44 @@ import os
 import pandas as pd  # 保留pandas导入，以备后用
 from fix_orders import fix_orders_excel  # 添加这行导入
 
+# 添加辅助函数，用于使用多个XPath尝试查找元素
+def find_element_with_multiple_xpaths(agent, xpaths, element_name):
+    """
+    使用多个XPath尝试查找元素，返回第一个找到的元素
+    
+    Args:
+        agent: WebDriver代理对象
+        xpaths: XPath列表
+        element_name: 元素名称（用于日志记录）
+    
+    Returns:
+        找到的元素对象，如果未找到则返回None
+    """
+    element = None
+    for xpath in xpaths:
+        try:
+            element = agent.find_element_by_xpath(xpath)
+            if element and element.is_displayed():
+                logger = setup_logger()
+                logger.info(f"使用XPath '{xpath}' 找到了 {element_name}")
+                break
+        except Exception as e:
+            continue
+    
+    if not element:
+        logger = setup_logger()
+        logger.warning(f"未能找到 {element_name}")
+    
+    return element
+
+# 辅助函数，从文本中提取金额
+def extract_amount_from_text(text):
+    """从文本中提取金额"""
+    import re
+    # 移除所有非数字字符，保留数字和小数点
+    amount_text = re.sub(r'[^\d.]', '', text)
+    return amount_text
+
 def main():
     logger = setup_logger()
     logger.info("程序启动")
@@ -118,25 +156,85 @@ def main():
                 try:
                     element = agent.find_element_by_xpath(xpath)
                     if element and element.is_displayed():
-                        # 处理元素
-                        pass
-                except Exception as e:
-                    logger.error(f"查找元素失败: {str(e)}")
-                    # 可以在这里添加恢复机制，比如刷新页面
-                    agent.load_page(agent.driver.current_url)
-                    
-                    if element and element.is_displayed():
                         found_headers[header_name] = True
                         logger.info(f"找到表头: {header_name}")
                     else:
                         found_headers[header_name] = False
-                        logger.error(f"未找到表头: {header_name}")
-            
-            # 如果所有表头都找到了，开始监控
-            if all(found_headers.values()):
-                logger.info("所有表头都已找到！")
+                        logger.warning(f"未找到表头: {header_name}")
+                except Exception as e:
+                    found_headers[header_name] = False
+                    logger.error(f"查找元素失败: {str(e)}")
                 
-                # 开始监控订单号
+                # 如果没有找到所有表头，先打开支付宝页面进行登录
+                if not all(found_headers.values()):
+                    logger.warning("未找到所有必要的表头，先打开支付宝页面进行登录...")
+                    
+                    # 在新窗口中打开支付宝交易记录页面
+                    try:
+                        # 记录当前窗口
+                        main_window = agent.driver.current_window_handle
+                        
+                        # 记录当前窗口数量
+                        original_windows = agent.driver.window_handles
+                        
+                        # 使用JavaScript打开支付宝交易记录页面
+                        agent.driver.execute_script("window.open('https://consumeprod.alipay.com/record/advanced.htm', '_blank');")
+                        time.sleep(3)  # 等待新窗口打开
+                        
+                        # 检查是否有新窗口打开
+                        current_windows = agent.driver.window_handles
+                        if len(current_windows) > len(original_windows):
+                            # 找到新窗口
+                            alipay_window = [handle for handle in current_windows if handle not in original_windows][0]
+                            agent.driver.switch_to.window(alipay_window)
+                            time.sleep(5)  # 等待页面加载
+                            
+                            logger.info("已打开支付宝交易记录页面，请登录支付宝...")
+                            
+                            # 检查是否需要登录支付宝
+                            if "登录" in agent.driver.title or "login" in agent.driver.current_url.lower():
+                                logger.info("检测到支付宝需要登录，请扫码登录...")
+                                # 等待用户扫码登录，最多等待60秒
+                                for _ in range(60):
+                                    if "登录" not in agent.driver.title and "login" not in agent.driver.current_url.lower():
+                                        logger.info("支付宝登录成功")
+                                        break
+                                    time.sleep(1)
+                            
+                            # 支付宝登录完成后，切回主窗口
+                            agent.driver.switch_to.window(main_window)
+                            logger.info("已切回OKX页面，尝试重新加载...")
+                            
+                            # 刷新页面并重新尝试查找表头
+                            agent.load_page("https://www.okx.com/zh-hans/p2p/dashboard")
+                            time.sleep(3)  # 等待页面加载
+                            
+                            # 查找订单菜单并点击
+                            logger.info("正在重新查找'订单'菜单...")
+                            element = agent.find_element_by_xpath("//span[text()='订单']")
+                            if element and element.is_displayed():
+                                agent.click_element(element)
+                                time.sleep(3)  # 等待页面加载
+                                
+                                # 重新检查表头
+                                logger.info("正在重新查找表头...")
+                                found_headers = {}
+                                for header_name, xpath in headers.items():
+                                    try:
+                                        element = agent.find_element_by_xpath(xpath)
+                                        if element and element.is_displayed():
+                                            found_headers[header_name] = True
+                                            logger.info(f"找到表头: {header_name}")
+                                        else:
+                                            found_headers[header_name] = False
+                                            logger.warning(f"未找到表头: {header_name}")
+                                    except:
+                                        found_headers[header_name] = False
+                                        logger.warning(f"未找到表头: {header_name}")
+                    except Exception as e:
+                        logger.error(f"打开支付宝页面失败: {str(e)}")
+                
+                # 无论是否找到所有表头，都继续执行监控
                 logger.info("开始监控订单号...")
                 while True:
                     try:
@@ -275,23 +373,28 @@ def main():
                                                     "//*[contains(text(), '付款人实名')]/following-sibling::*[1]",
                                                     "//span[contains(text(), '付款人实名')]/following-sibling::span[1]"
                                                 ]
-                                                name_element = None
-                                                for xpath in name_xpaths:
-                                                    try:
-                                                        name_element = agent.find_element_by_xpath(xpath)
-                                                        if name_element and name_element.is_displayed():
-                                                            break
-                                                    except:
-                                                        continue
+                                                name_element = find_element_with_multiple_xpaths(agent, name_xpaths, "付款人实名")
+                                                
+                                                # 获取收款方式 - 使用多个可能的XPath
+                                                payment_method_xpaths = [
+                                                    "//div[contains(text(), '收款方式')]/following-sibling::div[1]",
+                                                    "//div[contains(text(), '收款方式')]/../following-sibling::div[1]",
+                                                    "//*[contains(text(), '收款方式')]/following-sibling::*[1]",
+                                                    "//span[contains(text(), '收款方式')]/following-sibling::span[1]",
+                                                    "//*[contains(text(), '支付宝') or contains(text(), '微信') or contains(text(), '银行卡')]"
+                                                ]
+                                                payment_method_element = find_element_with_multiple_xpaths(agent, payment_method_xpaths, "收款方式")
                                                 
                                                 # 保存详情页面获取的信息到order字典中
                                                 detail_amount = detail_amount_element.text if detail_amount_element else None
                                                 order['详情页总金额'] = detail_amount
                                                 order['付款人实名'] = name_element.text if name_element else "未知"
-                                                
+                                                order['收款方式'] = payment_method_element.text if payment_method_element else "未知"
+
                                                 logger.info(f"从详情页获取的总金额: {detail_amount}")
                                                 logger.info(f"从详情页获取的付款人实名: {order['付款人实名']}")
-                                                
+                                                logger.info(f"从详情页获取的收款方式: {order['收款方式']}")
+
                                                 # 如果订单状态是"买家已付款"，则打开支付宝页面
                                                 if status_element and "买家已付款" in status_element.text:
                                                     logger.info("检测到买家已付款状态，准备打开支付宝交易记录页面...")
@@ -413,6 +516,8 @@ def main():
                                                                                 
                                                                                 transaction_amount = None
                                                                                 used_selector = None
+                                                                                
+                                                                                # 尝试使用XPath选择器查找金额
                                                                                 for selector in amount_selectors:
                                                                                     try:
                                                                                         elements = row.find_elements("xpath", selector)
@@ -420,13 +525,13 @@ def main():
                                                                                             for element in elements:
                                                                                                 text = element.text
                                                                                                 if text and ('¥' in text or text.strip().replace(',', '').replace('.', '').replace('+', '').replace('-', '').isdigit()):
-                                                                                                    # 移除+号、¥符号和逗号
-                                                                                                    transaction_amount = text.replace('¥', '').replace(',', '').replace('+', '').strip()
+                                                                                                    transaction_amount = extract_amount_from_text(text)
                                                                                                     used_selector = selector
                                                                                                     break
                                                                                         if transaction_amount:
                                                                                             break
-                                                                                    except:
+                                                                                    except Exception as e:
+                                                                                        logger.debug(f"使用选择器 {selector} 查找金额时出错: {str(e)}")
                                                                                         continue
                                                                                 
                                                                                 # 如果找不到金额，尝试获取整行文本并提取数字
@@ -739,6 +844,9 @@ def main():
                                         
                                     except Exception as e:
                                         logger.error(f"读取订单详情数据失败: {str(e)}")
+                                        # 添加堆栈跟踪以便更好地调试
+                                        import traceback
+                                        logger.debug(f"详细错误: {traceback.format_exc()}")
                                     
                                     # 不关闭详情页面，只添加到已处理集合
                                     processed_order_ids.add(order['订单号'])
